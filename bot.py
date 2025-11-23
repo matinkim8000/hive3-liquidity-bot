@@ -3,9 +3,8 @@ import datetime
 import pytz
 import os
 
-# GitHub Secrets에서 불러오기
-ETHERSCAN_KEY = os.getenv("ETHERSCAN_KEY")   # Ethers API v2 키
-TELEGRAM_BOT = os.getenv("TELEGRAM_BOT")     
+ETHERSCAN_KEY = os.getenv("ETHERSCAN_KEY")
+TELEGRAM_BOT = os.getenv("TELEGRAM_BOT")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 TOKEN = "0x83e137cf30dc28e5e6d28a63e841aa3bc6af1a99"  # SZPN
@@ -18,46 +17,41 @@ def send_msg(text):
 def get_kst_range():
     kst = pytz.timezone("Asia/Seoul")
     now = datetime.datetime.now(kst)
-
     start_kst = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end_kst   = now.replace(hour=23, minute=59, second=59, microsecond=999999)
-
     start_utc = start_kst.astimezone(pytz.utc).timestamp()
     end_utc   = end_kst.astimezone(pytz.utc).timestamp()
-
     return int(start_utc), int(end_utc)
 
 def check_liquidity():
     start_utc, end_utc = get_kst_range()
 
-    # 🔥 Ethers API v2 (BscScan v2) endpoint
     url = (
         f"https://api.etherscan.io/v2/api?"
-        f"chainid=56&"
-        f"module=account&"
-        f"action=tokentx&"
-        f"address={POOL_ADDRESS}&"
-        f"contractaddress={TOKEN}&"
-        f"page=1&offset=3000&"
-        f"sort=asc&"
-        f"apikey={ETHERSCAN_KEY}"
+        f"chainid=56&module=account&action=tokentx&"
+        f"address={POOL_ADDRESS}&contractaddress={TOKEN}&"
+        f"page=1&offset=3000&sort=asc&apikey={ETHERSCAN_KEY}"
     )
 
     data = requests.get(url).json()
-    txs = data.get("result", [])
+
+    # ⬇⬇⬇ 핵심 수정 부분 (v2 구조 대응)
+    result = data.get("result", {})
+    txs = result.get("transactions", [])
 
     count90 = count300 = count1500 = count3000 = 0
 
     for tx in txs:
-        if tx["to"].lower() != POOL_ADDRESS.lower():
+        to_addr = tx.get("to", "").lower()
+        if to_addr != POOL_ADDRESS.lower():
             continue
 
         ts = int(tx["timeStamp"])
         if ts < start_utc or ts > end_utc:
             continue
 
-        value = int(tx["value"]) / 1e18  # SZPN Decimals 18
-
+        value = int(tx["value"]) / 1e18
+        
         if value == 90:
             count90 += 1
         elif value == 300:
